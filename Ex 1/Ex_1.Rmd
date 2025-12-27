@@ -1,0 +1,171 @@
+---
+title: "Ex 1 :"
+author: "Nohalito"
+date: "2025-11-27"
+output: html_document
+---
+
+```{r setup, include = FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+packages <- c("readxl", "moments", "ggplot2", "fitdistrplus", "evd", "extRemes",
+              "copula", "PerformanceAnalytics", "tseries")
+lapply(packages, require, character.only = TRUE)
+```
+## 1°/ Data extraction :
+
+```{r data, include = FALSE}
+data = read_excel('../datasets/capm.xls', skip = 1)
+
+head(data)
+```
+```{r}
+# Construct excess returns 
+asset <- "MICROSOFT"
+
+# Excess returns
+asset_excess  <- data[[asset]] - data$USTB3M
+market_excess <- data$SANDP - data$USTB3M
+
+# Remove NA
+df <- na.omit(data.frame(asset_excess, market_excess))
+
+```
+
+```{r}
+# Basic stats
+summary(df)
+
+# Moments
+library(moments)
+apply(df, 2, skewness)
+apply(df, 2, kurtosis)
+```
+## 2°/ EDA :
+### 2.1°/ Distribution plot (asset excess):
+
+```{r}
+# Distribution plot (asset excess)
+ggplot(df, aes(x = asset_excess)) +
+  geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
+  geom_density(color = "blue") +
+  ggtitle("Histogram and Density – Asset Excess Returns")
+
+```
+### 2.2°/ QQ-plot :
+
+```{r}
+# Touche moi le QQ-plot
+qqnorm(df$asset_excess) +
+  qqline(df$asset_excess, col = "red")
+```
+### 2.3°/ Box-plot :
+
+```{r}
+boxplot(df$asset_excess, main = "Boxplot – Asset Excess Returns")
+```
+### 2.4°/ Time series plot :
+
+```{r}
+plot(df$asset_excess, type = "l",
+     main = "Time Series of Asset Excess Returns",
+     ylab = "Returns", xlab = "Time")
+```
+### 2.5°/ ACF :
+
+```{r}
+acf(df$asset_excess, main = "ACF – Asset Excess Returns")
+```
+### 2.6°/ PP-plot :
+
+```{r}
+ppplot <- function(x) {
+  n <- length(x)
+  y <- sort(x)
+  p <- pnorm(y, mean(x), sd(x))
+  plot((1:n)/(n+1), p, main="PP-Plot")
+  abline(0,1,col="red")
+}
+
+ppplot(df$asset_excess)
+```
+### 2.7°/ Bivariate scatterplot :
+
+```{r}
+plot(df$market_excess, df$asset_excess,
+     xlab = "Market Excess Returns",
+     ylab = "Asset Excess Returns",
+     main = "Bivariate Scatterplot")
+```
+## 3°/ Fit an extreme distribution :
+
+```{r}
+# Whatever the distribution, we need positive data => ofc I (don't) listen in class so I missed that part.
+
+x <- df$asset_excess # Should I put '-' before it ?
+x <- x[x > 0]  # focus on losses
+
+# We ballin' on Redbull distribution :
+fit_weibull <- fitdist(x, "weibull")
+summary(fit_weibull)
+plot(fit_weibull)
+```
+## 4°/ Fit the GEV distribution :
+
+```{r}
+#install.packages("fExtremes")
+#library('fExtremes')
+#?fgev
+#gev_fit <- fgev(df$asset_excess)
+#summary(gev_fit)
+
+# Fuck it, we rollin' on evd library instead
+library(evd)
+
+gev_fit <- fgev(df$asset_excess)
+summary(gev_fit)
+
+```
+### 4.1°/ GEV QQ-plot :
+
+```{r}
+# Extract fitted parameters
+params <- gev_fit$estimate
+
+# Compute the theoretical quantiles from the fitted GEV distribution
+theoretical_quantiles <- qgev(ppoints(length(df$asset_excess)), loc = params[1], scale = params[2], shape = params[3])
+
+# Create the QQ plot manually
+qqplot(theoretical_quantiles, df$asset_excess)
+```
+### 4.2°/ GEV Density :
+
+```{r}
+plot(gev_fit, type = "density")
+```
+### 4.3°/ GEV
+
+```{r}
+plot(gev_fit, type = "probability")
+```
+
+## 5 : Elliptical copulas :
+```{r}
+u_asset  <- rank(df$asset_excess)/(nrow(df)+1)
+u_market <- rank(df$market_excess)/(nrow(df)+1)
+
+U <- cbind(u_asset, u_market)
+```
+```{r}
+#install.packages("copula")
+#install.packages("gsl")
+#library(copula)
+#install.packages("VineCopula")
+#library(VineCopula)
+
+gauss_cop <- normalCopula(dim = 2)
+fit_gauss <- fitCopula(gauss_cop, U, method = "ml")
+summary(fit_gauss)
+R.version()
+```
+
