@@ -1,0 +1,9 @@
+---
+title: "Ex 3 :"
+author: "To be determined"
+date: "2025-11-27"
+output: html_document
+---
+
+```{r setup, include = FALSE, echo = FALSE}
+```
