@@ -41,6 +41,7 @@ library(moments)
 apply(df, 2, skewness)
 apply(df, 2, kurtosis)
 ```
+
 ## 2°/ EDA :
 ### 2.1°/ Distribution plot (asset excess):
 
@@ -52,6 +53,7 @@ ggplot(df, aes(x = asset_excess)) +
   ggtitle("Histogram and Density – Asset Excess Returns")
 
 ```
+
 ### 2.2°/ QQ-plot :
 
 ```{r}
@@ -59,11 +61,13 @@ ggplot(df, aes(x = asset_excess)) +
 qqnorm(df$asset_excess) +
   qqline(df$asset_excess, col = "red")
 ```
+
 ### 2.3°/ Box-plot :
 
 ```{r}
 boxplot(df$asset_excess, main = "Boxplot – Asset Excess Returns")
 ```
+
 ### 2.4°/ Time series plot :
 
 ```{r}
@@ -71,11 +75,13 @@ plot(df$asset_excess, type = "l",
      main = "Time Series of Asset Excess Returns",
      ylab = "Returns", xlab = "Time")
 ```
+
 ### 2.5°/ ACF :
 
 ```{r}
 acf(df$asset_excess, main = "ACF – Asset Excess Returns")
 ```
+
 ### 2.6°/ PP-plot :
 
 ```{r}
@@ -89,6 +95,7 @@ ppplot <- function(x) {
 
 ppplot(df$asset_excess)
 ```
+
 ### 2.7°/ Bivariate scatterplot :
 
 ```{r}
@@ -97,6 +104,7 @@ plot(df$market_excess, df$asset_excess,
      ylab = "Asset Excess Returns",
      main = "Bivariate Scatterplot")
 ```
+
 ## 3°/ Fit an extreme distribution :
 
 ```{r}
@@ -110,6 +118,7 @@ fit_weibull <- fitdist(x, "weibull")
 summary(fit_weibull)
 plot(fit_weibull)
 ```
+
 ## 4°/ Fit the GEV distribution :
 
 ```{r}
@@ -126,6 +135,7 @@ gev_fit <- fgev(df$asset_excess)
 summary(gev_fit)
 
 ```
+
 ### 4.1°/ GEV QQ-plot :
 
 ```{r}
@@ -138,15 +148,17 @@ theoretical_quantiles <- qgev(ppoints(length(df$asset_excess)), loc = params[1],
 # Create the QQ plot manually
 qqplot(theoretical_quantiles, df$asset_excess)
 ```
+
 ### 4.2°/ GEV Density :
 
 ```{r}
-plot(gev_fit, type = "density")
+plot(gev_fit)
 ```
-### 4.3°/ GEV
+
+### 4.3°/ GEV Probability
 
 ```{r}
-plot(gev_fit, type = "probability")
+plot(gev_fit)
 ```
 
 ## 5 : Elliptical copulas :
@@ -159,13 +171,23 @@ U <- cbind(u_asset, u_market)
 ```{r}
 #install.packages("copula")
 #install.packages("gsl")
+#library(gsl)
 #library(copula)
+#installed.packages()
+#search()
 #install.packages("VineCopula")
 #library(VineCopula)
 
 gauss_cop <- normalCopula(dim = 2)
 fit_gauss <- fitCopula(gauss_cop, U, method = "ml")
 summary(fit_gauss)
-R.version()
+```
+
+## 6°/ Archimedean copulas : Clayton :
+
+```{r}
+clayton <- claytonCopula(dim = 2)
+fit_clayton <- fitCopula(clayton, U, method = "ml")
+summary(fit_clayton)
 ```
 
