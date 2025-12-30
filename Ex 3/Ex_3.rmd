@@ -6,4 +6,71 @@ output: html_document
 ---
 
 ```{r setup, include = FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+packages <- c("readxl", "dplyr","tidyverse", "dynlm", "FinTS","lmtest", "tseries", "MSwM", "tsDyn", "rugarch", "rmgarch")
+lapply(packages, require, character.only = TRUE)
+
+bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
+
+# Inspect column names
+colnames(bonds)
+
 ```
+
+```{r}
+# Construct yield spreads vs Germany
+bonds <- bonds %>%
+  mutate(
+    AUT_spread = bonds$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
+    SPA_spread = bonds$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
+  ) %>%
+  drop_na()
+
+# Convert to time series
+AUT_spread <- ts(bonds$AUT_spread, frequency = 12)
+SPA_spread <- ts(bonds$SPA_spread, frequency = 12)
+```
+
+## 1°/ Markov-Switching Model :
+### 1.1°/ Linear benchmark model :
+
+```{r}
+# Start with 1 lag
+lin_mod <- lm(AUT_spread ~ stats::lag(SPA_spread, 1))
+summary(lin_mod)
+
+# Autocorrelation
+bgtest(lin_mod, order = 4)
+
+# ARCH effects
+ArchTest(residuals(lin_mod), lags = 5)
+
+# Normality
+jarque.bera.test(residuals(lin_mod))
+```
+
+### 1.2°/ Markov-Switching regression (2 regimes) :
+
+```{r}
+AICs <- c()
+
+for (p in 1:4) {
+  mod <- lm(AUT_spread ~ stats::lag(SPA_spread, -p))
+  AICs[p] <- AIC(mod)
+}
+
+which.min(AICs)
+```
+```{r}
+bonds$lagged_SPA_spread <- stats::lag(bonds$SPA_spread, 1)
+
+ms_mod <- msmFit(
+  lm(AUT_spread ~ bonds$lagged_SPA_spread),
+  k = 2,
+  sw = c(TRUE, TRUE, TRUE)  # intercept, slope, variance switch
+)
+
+summary(ms_mod)
+```
+

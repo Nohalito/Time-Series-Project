@@ -1,0 +1,30 @@
+Exercise : Regime-swifting models II
+
+Using data from the base_bond-equity database, we wish to
+study the relationships between the bond spreads of two countries (10-year yields). Choose one of
+the following country pairs (Let's go with autria & spain):
+
+1: France/Belgium; 2 : Austria/Spain; 3: Greece/Ireland; 4: Italy/the Netherlands
+
+Consider the following equation:
+
+(𝑌𝑖𝑡) − 𝑌𝑔𝑡 = 𝛼𝑖 + 𝛽𝑖𝑗(𝐿)[(𝑌𝑗𝑡) − 𝑌𝑔𝑡] + 𝜀𝑖𝑗𝑡
+𝑌𝑔𝑡: German 10-year bond
+(𝑌𝑖𝑡) − 𝑌𝑔𝑡: yield spread of country i
+(𝑌𝑗𝑡) − 𝑌𝑔𝑡: yield spread of country j
+L is the lag operator and 𝜀𝑖𝑗𝑡 is a white noise term.
+
+Questions
+1. Estimate the above equation using a Markov-switching model with 2 regimes:
+- Estimate the linear model and use tests on residuals to show that the dynamics is probably
+nonlinear.
+- Fit a Markov-switching model (select the optimal lag structure using tests based on
+information criteria).
+- Plot graphs of the posterior probabilities of each regime
+- Comment your findings.
+2. We wish to apply a STAR model to the excess return on assets, the transition variable being
+the market excess return delayed by one or more periods (to be determined). After applying
+the appropriate tests, estimate an ESTAR or LSTAR model. Make a graphical
+representation of the transition function. Comment on your results.
+3. Use a bivariate GARCH model to study the correlation between excess return of your assets
+and excess return on the market. Comment on your results

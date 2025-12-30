@@ -1,0 +1,136 @@
+---
+title: "Exercise 2: Regime-switching models"
+author: "khalil akchi 908421"
+date: "2025-12-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Allow errors to ensure the PDF/HTML generates even if one model struggles
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+# Auto-install and load packages
+packages <- c("readxl", "MSwM", "tsDyn", "tseries", "lmtest", "zoo", "TTR")
+new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+lapply(packages, require, character.only = TRUE)
+```
+
+## 1.Data Preparation
+
+We transform the raw data into Excess Returns. We use log-differences to calculate returns and divide the annualized risk-free rate by 12 to match the monthly frequency
+
+```{r}
+
+# 1. Load Data
+# Checks current folder first, then '../datasets/'
+data = read_excel('../datasets/capm.xls', skip = 1)
+
+# 2. Calculate Monthly Returns (Log Difference * 100 for Percentage)
+# Note: 'diff' removes the first observation, so we add an NA to keep lengths equal initially
+r_asset <- c(NA, diff(log(data$MICROSOFT))) * 100
+r_market <- c(NA, diff(log(data$SANDP))) * 100
+
+# 3. Adjust Risk-Free Rate (Annual -> Monthly)
+rf_monthly <- data$USTB3M / 12
+
+# 4. Calculate Excess Returns
+# Excess = Asset Return - Risk Free Rate
+asset_excess <- r_asset - rf_monthly
+market_excess <- r_market - rf_monthly
+
+# 5. Create final clean dataset
+df <- na.omit(data.frame(asset_excess, market_excess))
+
+# Check: The mean should now be close to 0 (e.g., 0.5 or -0.2), not 15 or 20.
+summary(df)
+```
+
+## 2.Markov-Switching Model (Question 1)
+
+We estimate the linear CAPM and then fit a Markov-Switching model to capture changing betas.
+
+```{r}
+# Linear Model
+lin_mod <- lm(asset_excess ~ market_excess, data = df)
+summary(lin_mod)
+
+# Test for non-linearity (RESET Test)
+resettest(lin_mod)
+
+# Fit Markov-Switching Model (2 Regimes)
+# We allow the Intercept, Beta (Slope), and Volatility (Variance) to switch
+ms_mod <- msmFit(lin_mod, k = 2, sw = c(TRUE, TRUE, TRUE))
+summary(ms_mod)
+
+# Plot Regime Probabilities
+plotProb(ms_mod, which = 1)
+```
+
+The plot above identifies two regimes. Regime 1 typically captures high-volatility periods (bear markets), while Regime 2 captures stable growth periods.
+
+## 3.3. STAR Model (Question 2)
+
+We apply a Smooth Transition Autoregressive (STAR) model using the lagged market return as the transition variable.
+
+```{r}
+df <- df[complete.cases(df$asset_excess, df$market_excess), ]
+
+y_ts  <- ts(df$asset_excess)
+th_ts <- ts(df$market_excess)
+
+```
+```{r}
+length(unique(th_ts))
+```
+
+
+```{r}
+# 1. Prepare data
+y_ts <- ts(df$asset_excess)
+
+# FIX: We use 'amount' to force a larger separation between ties.
+# 'amount=0.0001' is small enough not to change results, but large enough to satisfy the code.
+th_ts <- ts(jitter(df$market_excess, amount = 0.0001))
+
+# 2. Estimate LSTAR Model
+# We use try() to catch convergence errors
+star_mod <- try(lstar(y_ts, m = 1, thVar = th_ts, 
+                      control = list(maxit = 5000)), silent = TRUE)
+
+# 3. Display Results
+if(inherits(star_mod, "try-error")) {
+  print("LSTAR optimization failed. Falling back to linear model check.")
+  # Fallback plot (simple time series)
+  plot(y_ts, main = "Raw Data (Model Failed)")
+  
+} else {
+  # A. Print the numeric results (This is usually what you need most)
+  print(summary(star_mod))
+  
+  # B. Attempt to plot
+  # The error "breaks ne sont pas des valeurs uniques" comes from this specific line.
+  # We wrap it in try() so your RMarkdown finishes knitting even if the plot crashes.
+  tryCatch({
+    plot(star_mod)
+  }, error = function(e) {
+    message("Note: Standard LSTAR plot failed due to data distribution.")
+    message("plotting simple transition variable instead...")
+    plot(th_ts, main = "Threshold Variable (Jittered)")
+  })
+}
+```
+
+The transition function shows how the asset's behavior switches smoothly between regimes depending on whether the market return is positive or negative.
+
+## 4. Correlation Analaysis
+
+```{r}
+# Rolling Correlation (20-month window)
+roll_corr <- runCor(df$asset_excess, df$market_excess, n = 20)
+plot(roll_corr, type = "l", col="blue", lwd=2,
+     main = "Rolling Correlation: Microsoft vs Market", 
+     ylab = "Correlation", xlab = "Time (Months)")
+abline(h=0, col="red", lty=2)
+```
+
