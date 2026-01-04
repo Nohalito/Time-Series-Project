@@ -61,8 +61,7 @@ for (p in 1:4) {
 }
 
 which.min(AICs)
-```
-```{r}
+
 bonds$lagged_SPA_spread <- stats::lag(bonds$SPA_spread, 1)
 
 bonds2 <- na.omit(bonds)
@@ -70,6 +69,7 @@ bonds2 <- na.omit(bonds)
 ms_mod <- msmFit(
   lm(AUT_spread ~ lagged_SPA_spread, data = bonds2),
   k = 2,
+  control = list(parallel = FALSE),
   sw = c(TRUE, TRUE, TRUE)  # intercept, slope, variance switch
 )
 
@@ -89,7 +89,7 @@ plot(ms_mod@Fit@smoProb[,2],
      ylab = "Probability")
 ```
 
-## 2°/ STAR Model :
+## 2°/ LSTAR Model :
 ### 2.1°/ Linearity test :
 
 ```{r}
@@ -100,7 +100,74 @@ plot(resid(lin_model))
 residuals <- resid(lin_model)
 
 nonlinearityTest(residuals,verbose=TRUE)
+```
 
-summary(star_test)
+### 2.2 LSTAR model :
+
+```{r}
+lstar_mod <- lstar(
+  bonds$AUT_spread,
+  m = 1,
+  d = 1,
+  control = list(trace = TRUE)
+)
+
+summary(lstar_mod)
+```
+
+```{r}
+pdf_file <- "lstar_transition.pdf"
+
+if (file.exists(pdf_file)) {
+  # Open the existing PDF
+  if (.Platform$OS.type == "windows") {
+    shell.exec(pdf_file)
+  } else if (Sys.info()["sysname"] == "Darwin") {
+    system(paste("open", pdf_file))
+  } else {
+    system(paste("xdg-open", pdf_file))
+  }
+} else {
+  # Create the PDF
+  pdf(pdf_file)
+  plot(lstar_mod, which = "transition")
+  dev.off()
+}
+```
+
+## 3°/ Bivariate GARCH :
+### 3.1°/ Specify univariate GARCH :
+
+```{r}
+spec_uni <- ugarchspec(
+  variance.model = list(model = "sGARCH"),
+  mean.model = list(armaOrder = c(1,0)),
+  distribution.model = "norm"
+)
+```
+
+### 3.2°/ GARCH specification :
+
+```{r}
+spec_dcc <- dccspec(
+  uspec = multispec(replicate(2, spec_uni)),
+  dccOrder = c(1,1),
+  distribution = "mvnorm"
+)
+
+data_mat <- cbind(AUT_spread, SPA_spread)
+
+dcc_fit <- dccfit(spec_dcc, data = data_mat)
+summary(dcc_fit)
+```
+
+### 3.3 Dynamic correlation plot :
+
+```{r}
+dcc_cor <- rcor(dcc_fit)
+plot(dcc_cor[1,2,],
+     type = "l",
+     main = "Dynamic Correlation: Austria–Spain",
+     ylab = "Correlation")
 ```
 
