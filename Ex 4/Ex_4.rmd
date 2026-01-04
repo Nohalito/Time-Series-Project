@@ -1,9 +1,169 @@
 ---
 title: "Ex 4 :"
-author: "To be determined"
+author: "Noha"
 date: "2025-11-27"
 output: html_document
 ---
 
 ```{r setup, include = FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+packages <- c("readxl","tidyverse", "moments", "fitdistrplus","evd", "VineCopula", "tseries")
+lapply(packages, require, character.only = TRUE)
+
+bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
+
+# Inspect column names
+colnames(bonds)
+
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(copula)
 ```
+
+```{r}
+# Construct yield spreads vs Germany
+bonds <- bonds %>%
+  mutate(
+    AUT_spread = bonds$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
+    SPA_spread = bonds$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
+  ) %>%
+  drop_na()
+
+# Convert to time series
+AUT <- ts(bonds$AUT_spread, frequency = 12)
+SPA <- ts(bonds$SPA_spread, frequency = 12)
+```
+
+## 1°/ Preliminary analysis :
+### 1.1°/ Statistic :
+
+```{r}
+basic_stats <- function(x) {
+  c(
+    Mean = mean(x),
+    SD = sd(x),
+    Skewness = skewness(x),
+    Kurtosis = kurtosis(x),
+    Min = min(x),
+    Max = max(x)
+  )
+}
+
+basic_stats(AUT)
+basic_stats(SPA)
+```
+
+### 1.2°/ Time series plot :
+
+```{r}
+par(mfrow = c(2,1))
+plot(AUT, type="l", main="Austria–Germany Spread", ylab="Spread")
+plot(SPA, type="l", main="Spain–Germany Spread", ylab="Spread")
+```
+
+### 1.3°/ Distribution plots :
+
+```{r}
+par(mfrow=c(2,2))
+hist(AUT, breaks=30, main="Histogram AUT", freq=FALSE)
+lines(density(AUT), col="red")
+
+hist(SPA, breaks=30, main="Histogram SPA", freq=FALSE)
+lines(density(SPA), col="red")
+
+boxplot(AUT, main="Boxplot AUT")
+boxplot(SPA, main="Boxplot SPA")
+```
+
+### 1.4°/ QQ-plots :
+
+```{r}
+par(mfrow=c(1,2))
+qqnorm(AUT); qqline(AUT, col="red")
+qqnorm(SPA); qqline(SPA, col="red")
+```
+
+### 1.5°/ Autocorrelation functions :
+
+```{r}
+par(mfrow=c(1,2))
+acf(AUT, main="ACF AUT Spread")
+acf(SPA, main="ACF SPA Spread")
+```
+
+### 1.6°/ Bivariate scatterplot & PP-plot :
+
+```{r}
+# Scatterplot
+plot(AUT, SPA,
+     main="Bivariate Scatterplot: AUT vs SPA",
+     xlab="AUT Spread", ylab="SPA Spread")
+
+# PP-plot
+ppplot(AUT, SPA,
+       main="PP-Plot: AUT vs SPA")
+```
+
+## 2°/ Fit Weibull :
+
+```{r}
+AUT_numeric <- as.numeric(AUT)
+SPA_numeric <- as.numeric(SPA)
+
+fit_AUT <- fitdist(AUT_numeric - min(AUT_numeric) + 1e-6, "weibull")
+fit_AUT_logn <- fitdist(AUT_numeric - min(AUT_numeric) + 1e-6, "lnorm")
+fit_AUT_gamma <- fitdist(AUT_numeric - min(AUT_numeric) + 1e-6, "gamma")
+
+fit_SPA <- fitdist(SPA_numeric - min(SPA_numeric) + 1e-6, "weibull")
+fit_SPA_logn <- fitdist(SPA_numeric - min(SPA_numeric) + 1e-6, "lnorm")
+fit_SPA_gamma <- fitdist(SPA_numeric - min(SPA_numeric) + 1e-6, "gamma")
+```
+
+```{r}
+gofstat(list(fit_AUT, fit_AUT_logn, fit_AUT_gamma))
+gofstat(list(fit_SPA, fit_SPA_logn, fit_SPA_gamma))
+```
+
+## 3°/ GEV distribution :
+### 3.1°/ GEV estimation :
+
+```{r}
+AUT_ret <- diff(AUT)
+SPA_ret <- diff(SPA)
+
+gev_AUT <- fgev(AUT_ret)
+gev_SPA <- fgev(SPA_ret)
+
+gev_AUT
+gev_SPA
+```
+
+### 3.2°/ GEV plot :
+
+```{r}
+par(mfrow=c(1,3))
+plot(gev_AUT, which = 1)  # QQ-plot
+plot(gev_AUT, which = 2)  # Density
+plot(gev_AUT, which = 3)  # CDF
+```
+
+## 4°/ Elliptical copula :
+
+```{r}
+U <- pobs(cbind(AUT_ret, SPA_ret))
+
+gauss_cop <- normalCopula(dim = 2)
+fit_gauss <- fitCopula(gauss_cop, U, method = "ml")
+
+summary(fit_gauss)
+```
+
+## 5°/ Archimedean Clayton Copula :
+
+```{r}
+clayton_cop <- claytonCopula(dim = 2)
+fit_clayton <- fitCopula(clayton_cop, U, method = "ml")
+
+summary(fit_clayton)
+```
+

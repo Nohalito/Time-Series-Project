@@ -1,0 +1,11 @@
+Exercise 4 : Extreme distributions :
+
+Now, we wish to model the correlation between the spreads of countries i and j using copulas.
+• Do a preliminary analysis of the spreads based on basics statistics, graphs of the
+distributions, QQ-plots, box-plot, bivariate scatterplot, graphs of time series,
+autocorrelation function, pp-plot
+• Fit one of the following extreme distribution to the spreads: Weibull, log-norma, Gamma.
+• Fit a GEV distribution to the excess return series and plot the QQ-plot, density and CDF.
+• Using elliptical copulas, estimate the correlation between the excess returns of your asset
+asset and the market excess returns.
+• Fit Archimedian copulas (Clayton or Weibull).
