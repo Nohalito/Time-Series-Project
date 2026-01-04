@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include = FALSE, echo = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-packages <- c("readxl","tidyverse", "moments", "fitdistrplus","evd", "VineCopula", "tseries")
+packages <- c("readxl","tidyverse", "moments", "fitdistrplus", "copula","evd", "VineCopula", "tseries")
 lapply(packages, require, character.only = TRUE)
 
 bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
@@ -16,8 +16,13 @@ bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
 # Inspect column names
 colnames(bonds)
 
-if(!require(pacman)) install.packages("pacman")
-pacman::p_load(copula)
+#install.packages("gsl", type = "source")
+#library(gsl)
+#library(copula)
+#R.version.string
+#library(installr)
+#installr(GUI = TRUE)
+#install.packages("gsl", type = "source")
 ```
 
 ```{r}
@@ -100,8 +105,8 @@ plot(AUT, SPA,
      xlab="AUT Spread", ylab="SPA Spread")
 
 # PP-plot
-ppplot(AUT, SPA,
-       main="PP-Plot: AUT vs SPA")
+#ppplot(AUT, SPA,
+#       main="PP-Plot: AUT vs SPA")
 ```
 
 ## 2°/ Fit Weibull :
@@ -131,8 +136,8 @@ gofstat(list(fit_SPA, fit_SPA_logn, fit_SPA_gamma))
 AUT_ret <- diff(AUT)
 SPA_ret <- diff(SPA)
 
-gev_AUT <- fgev(AUT_ret)
-gev_SPA <- fgev(SPA_ret)
+gev_AUT <- fgev(bonds$AUT_spread)
+gev_SPA <- fgev(bonds$SPA_spread)
 
 gev_AUT
 gev_SPA
