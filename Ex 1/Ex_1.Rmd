@@ -29,7 +29,6 @@ market_excess <- data$SANDP - data$USTB3M
 
 # Remove NA
 df <- na.omit(data.frame(asset_excess, market_excess))
-
 ```
 
 ```{r}
@@ -51,7 +50,6 @@ ggplot(df, aes(x = asset_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "blue") +
   ggtitle("Histogram and Density – Asset Excess Returns")
-
 ```
 
 ### 2.2°/ QQ-plot :
