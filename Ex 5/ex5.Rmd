@@ -1,0 +1,443 @@
+---
+title: "Exercise 5"
+author: "khalil akchi"
+date: "2026-01-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+### Part A: Theoretical Foundations
+
+#### 1. Definition and Characteristics
+A **Long-Memory process** is defined as a stationary time series where the dependence between observations decays much more slowly than in short-memory processes (like standard ARMA models). This phenomenon is characterized by three main statistical features:
+
+* **Autocorrelation Function (ACF):** In short-memory models (e.g., AR(1)), the autocorrelation decays exponentially ($\rho(k) \sim \phi^k$). In long-memory models, the ACF decays hyperbolically:
+    $$\rho(k) \sim C k^{2d-1} \quad \text{as } k \to \infty$$
+    This implies that past shocks have a persistent effect that lasts for a very long time, often described as the "Joseph Effect."
+
+* **Spectral Density:** In the frequency domain, the spectral density $f(\omega)$ follows a power law. It tends to infinity (diverges) as the frequency approaches zero:
+    $$f(\omega) \sim C |\omega|^{-2d} \quad \text{as } \omega \to 0$$
+
+* **The Parameter $d$:** The fractional differencing parameter $d$ determines the nature of the process:
+    * **$d = 0$:** Short memory (standard ARMA).
+    * **$0 < d < 0.5$:** Long memory (Stationary). The series mean-reverts, but very slowly.
+    * **$d \ge 0.5$:** Non-stationary (infinite variance).
+
+#### 2. Examples of Long-Memory Processes
+
+**ARFIMA(p, d, q)**
+The *AutoRegressive Fractionally Integrated Moving Average* model captures long-range dependence at the zero frequency (long-run trends). It is defined as:
+$$\Phi(L) (1 - L)^d X_t = \Theta(L) \epsilon_t$$
+Where:
+* $\Phi(L)$ and $\Theta(L)$ are the standard AR and MA polynomials.
+* $(1-L)^d$ is the fractional differencing operator, defined by a binomial expansion.
+* $\epsilon_t$ is a white noise process.
+
+**Gegenbauer Process (GARMA)**
+While ARFIMA models capture persistence around the zero frequency, **Gegenbauer** (or GARMA) processes generalize this concept to allow for long memory behavior at cyclical frequencies (seasonal persistence). They are defined using Gegenbauer polynomials:
+$$\Phi(L) (1 - 2uL + L^2)^\lambda X_t = \Theta(L) \epsilon_t$$
+Where the parameter $u$ determines the frequency (periodicity) where the spectral pole (long memory) occurs.
+
+#### 3. Estimation Methods
+
+There are several methods to estimate the fractional parameter $d$:
+
+* **Exact Maximum Likelihood (EML):**
+    * *Pros:* Most efficient estimator (lowest variance) if the error terms are truly Gaussian.
+    * *Cons:* Computational complexity is high ($O(n^3)$), making it slow for very large datasets. It is also sensitive to non-normality.
+
+* **Whittle Estimator:**
+    * *Pros:* An approximation of the likelihood in the frequency domain. It is much faster to compute ($O(n \log n)$) and does not assume normality (more robust).
+    * *Cons:* Can be slightly less efficient than EML for very small samples.
+
+* **Geweke–Porter–Hudak (GPH):**
+    * *Pros:* A semi-parametric method based on a log-periodogram regression. It is **preferred in practice** for initial analysis because it estimates $d$ without requiring the specification of $p$ and $q$ lags, avoiding misspecification bias.
+    * *Cons:* It generally has higher variance (less precise) compared to parametric methods like EML.
+    
+## Part B: Empirical Analysis
+
+### 1. Exploratory Analysis
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(forecast)
+library(dplyr)
+library(lubridate)
+
+# --- 1. Load the Data ---
+# We read the specific sheets corresponding to the data
+traffic_data <- read_excel("C:/Users/Administrator/Downloads/air traffic (1).xlsx", sheet = "Series_originales")
+enso_data <- read_excel("C:/Users/Administrator/Downloads/training_enso.xlsx", sheet = "Sheet 1")
+
+# --- 2. Preprocessing & Time Series Creation ---
+
+# A. Airline Passengers
+# Convert date column and sort to ensure chronological order
+traffic_data$date <- as.Date(traffic_data$date)
+traffic_data <- traffic_data %>% arrange(date)
+
+# Create Time Series Object (TS)
+# Frequency = 4 because the data is Quarterly (starts 1990 Q1)
+ts_traffic <- ts(traffic_data$LSN_PAX, start = c(1990, 1), frequency = 4)
+# Plot 1: Airline Passengers
+print("Analysis for Airline Passengers:")
+ggtsdisplay(ts_traffic, main = "Airline Passengers: Series, ACF, and PACF")
+```
+
+#### 1. Airline Passengers Series (LSN_PAX)
+* **Visual Inspection:** The time series displays a very clear and strong **upward trend**, indicating that the number of passengers has been increasing steadily over the observed period.
+* **Seasonality & Volatility:** There is a distinct seasonal pattern that repeats every 4 quarters (annual cycle). Furthermore, we observe **volatility clustering** or heteroscedasticity: as the level of the series increases, the amplitude of the seasonal fluctuations also becomes larger. This suggests a multiplicative structure.
+* **ACF & PACF:**
+    * The **ACF** decreases very slowly (almost linearly) and remains significant for many lags. This slow decay is characteristic of a non-stationary series with a deterministic trend. The "scalloped" or wavy shape of the ACF confirms the strong seasonality.
+    * The **PACF** shows a large significant spike at the first lag (close to 1), which is typical for trended data.
+* **Long Memory Assessment:** While the slow decay in the ACF might superficially resemble long memory, it is primarily driven by the **deterministic trend and non-stationary seasonality**. We cannot conclude it has "true" long memory properties without first stationarizing the series (e.g., by differencing or detrending).
+
+```{r}
+# B. ENSO Index (ONI)
+# Convert date column and sort
+enso_data$Date <- as.Date(enso_data$Date)
+enso_data <- enso_data %>% arrange(Date)
+
+# Create Time Series Object (TS)
+# Frequency = 12 because the data is Monthly
+# We extract the start year and month dynamically from the data
+start_year <- year(min(enso_data$Date))
+start_month <- month(min(enso_data$Date))
+ts_enso <- ts(enso_data$ONI, start = c(start_year, start_month), frequency = 12)
+
+# --- 3. Exploratory Analysis Plots ---
+# We use ggtsdisplay to show the Series, ACF, and PACF in one view
+
+
+
+# Plot 2: ENSO Index
+print("Analysis for ENSO Index (ONI):")
+ggtsdisplay(ts_enso, main = "ENSO Index (ONI): Series, ACF, and PACF")
+```
+
+#### 2. ENSO Anomalies Index (ONI)
+* **Visual Inspection:** Unlike the airline data, the ENSO series does **not** show a clear deterministic trend. It fluctuates around zero, representing the warm (El Niño) and cool (La Niña) phases. The cycles appear **irregular** or quasi-periodic rather than strictly seasonal.
+* **ACF & PACF:**
+    * The **ACF** starts high and decays slowly, but the shape is curved (hyperbolic) rather than linear. Significant autocorrelations persist for a long time, indicating strong persistence in the data.
+    * The **PACF** typically cuts off after the first few lags.
+* **Long Memory Assessment:** This series is a **strong candidate for a Long Memory process**. The slow, hyperbolic decay in the ACF—in the absence of a clear linear trend—suggests that shocks to the system decay very slowly over time. This persistence is the defining characteristic of fractional integration (Long Memory).
+
+
+
+
+
+
+```{r}
+# --- 2. Model Estimation (CORRECTED) ---
+library(readxl)
+library(fracdiff)
+library(forecast)
+library(dplyr)
+
+# --- A. Clean Data Loading Function ---
+# We define a strict cleaning step to remove NAs
+get_clean_series <- function(filepath, sheetname, colname) {
+  # Read the excel sheet
+  df <- read_excel(filepath, sheet = sheetname)
+  
+  # Extract the specific column as a vector
+  vals <- df[[colname]]
+  
+  # Force to numeric (turns text to NA)
+  vals <- as.numeric(as.character(vals))
+  
+  # REMOVE NAs (This is the critical fix)
+  vals <- vals[!is.na(vals)]
+  
+  return(vals)
+}
+
+# --- B. Process Airline Data ---
+cat("\n=========================================\n")
+cat("PROCESSING AIRLINE DATA\n")
+cat("=========================================\n")
+
+# 1. Load and Clean
+raw_traffic <- get_clean_series("C:/Users/Administrator/Downloads/air traffic (1).xlsx", "Series_originales", "LSN_PAX")
+
+# 2. Transform (Log) and Create TS
+# We use frequency=4 for Quarterly
+ts_traffic <- ts(log(raw_traffic), frequency = 4)
+
+# 3. Estimate ARFIMA
+# We use 'fracdiff' directly which gives d, AR, and MA
+# We ask for a standard ARFIMA(1, d, 1) to ensure we get coefficients to look at
+# or we can let it try to optimize. Let's try a simple fit first.
+fit_air <- fracdiff(ts_traffic, nar = 1, nma = 1)
+
+# 4. Print Results
+cat("Estimated d:", fit_air$d, "\n")
+cat("Standard Error of d:", fit_air$stderror.dp, "\n")
+# Calculate 95% CI
+lower_d <- fit_air$d - 1.96 * fit_air$stderror.dp
+upper_d <- fit_air$d + 1.96 * fit_air$stderror.dp
+cat("95% CI for d: [", lower_d, ", ", upper_d, "]\n")
+cat("AR Coefficients:", fit_air$ar, "\n")
+cat("MA Coefficients:", fit_air$ma, "\n")
+```
+
+### Interpretation of Model Estimation
+
+#### 1. Airline Passengers (Log-Transformed)
+* **Parameter Estimates:**
+    * **Fractional Differencing ($d$):** The estimated $d$ is **0.048** (approx. 0.05).
+    * **Coefficients:** The model estimated a strong Autoregressive (AR) coefficient of **0.85** and an MA coefficient of **0.46**.
+* **Statistical Significance:**
+    * The 95% Confidence Interval for $d$ `[0.046, 0.050]` does not include 0, indicating that the parameter is statistically significant.
+* **Interpretation of Persistence:**
+    * Although $d$ is statistically significant, its magnitude is very small ($0.05$). This indicates that once the short-term dynamics (captured by the high AR term of 0.85) are accounted for, there is only a negligible amount of "long memory" remaining.
+    * The persistence in this series is primarily driven by the **high AR term** (short memory with slow exponential decay) and the underlying deterministic trend, rather than pure fractional integration.
+
+```{r}
+# --- C. Process ENSO Data ---
+cat("\n=========================================\n")
+cat("PROCESSING ENSO DATA\n")
+cat("=========================================\n")
+
+# 1. Load and Clean
+raw_enso <- get_clean_series("C:/Users/Administrator/Downloads/training_enso.xlsx", "Sheet 1", "ONI")
+
+# 2. Create TS (Monthly)
+ts_enso <- ts(raw_enso, frequency = 12)
+
+# 3. Estimate ARFIMA
+# Fitting ARFIMA(1, d, 0) is often good for ENSO, but we will try (1,d,1) to be safe
+fit_enso <- fracdiff(ts_enso, nar = 1, nma = 1)
+
+# 4. Print Results
+cat("Estimated d:", fit_enso$d, "\n")
+cat("Standard Error of d:", fit_enso$stderror.dp, "\n")
+# Calculate 95% CI
+lower_d_enso <- fit_enso$d - 1.96 * fit_enso$stderror.dp
+upper_d_enso <- fit_enso$d + 1.96 * fit_enso$stderror.dp
+cat("95% CI for d: [", lower_d_enso, ", ", upper_d_enso, "]\n")
+cat("AR Coefficients:", fit_enso$ar, "\n")
+cat("MA Coefficients:", fit_enso$ma, "\n")
+```
+
+#### 2. ENSO Anomalies Index (ONI)
+* **Parameter Estimates:**
+    * **Fractional Differencing ($d$):** The estimate is **$4.58 \times 10^{-5}$**, which is effectively **zero**.
+    * **Coefficients:** The model selected a very high AR coefficient (**0.93**) and an MA coefficient (**0.66**).
+* **Reliability & Warning:**
+    * The output generated a warning (*"unable to compute correlation matrix"*) and failed to produce standard errors or confidence intervals. This occurs because the MLE optimization hit the "boundary" of $d=0$.
+* **Interpretation of Persistence:**
+    * Since $d \approx 0$, the model has essentially collapsed to a standard **ARMA(1,1)** model (Short Memory).
+    * The "long" persistence observed visually in the ENSO data is being captured entirely by the **AR coefficient (0.93)**. Since 0.93 is close to 1, shocks die out slowly, but they do so **exponentially** (characteristic of short memory) rather than **hyperbolically** (characteristic of long memory).
+    * **Conclusion:** Based on this specific estimation method, we **do not find evidence of Long Memory** ($d>0$) for the ENSO series; it is best described as a highly persistent short-memory process.
+    
+### 3. Model Diagnostics
+
+We will extract the residuals from the models and run three standard diagnostic tests:
+
+Ljung-Box Test: To check if there is any leftover correlation (autocorrelation) in the residuals.
+
+Shapiro-Wilk / Jarque-Bera Test: To check if the residuals are normally distributed.
+
+ARCH LM Test: To check if the volatility (variance) is changing over time (heteroskedasticity).
+
+```{r}
+# --- 3. Model Diagnostics (Robust Version) ---
+library(tseries)
+library(FinTS)
+library(forecast)
+library(fracdiff)
+library(readxl)
+library(dplyr)
+
+# --- A. Helper: Re-load Data (to ensure we have it) ---
+get_clean_series <- function(filepath, sheetname, colname) {
+  df <- read_excel(filepath, sheet = sheetname)
+  vals <- as.numeric(as.character(df[[colname]]))
+  return(vals[!is.na(vals)])
+}
+
+# --- B. Helper: Diagnostic Function ---
+run_diagnostics <- function(series, model_fit, name) {
+  cat(paste0("\n=========================================\n"))
+  cat(paste0("  DIAGNOSTICS FOR: ", name, "\n"))
+  cat(paste0("=========================================\n"))
+  
+  # 1. Safe Residual Extraction
+  # We try to get residuals from the object, or calculate them manually if needed
+  if (!is.null(model_fit$residuals)) {
+    resids <- model_fit$residuals
+  } else {
+    # Fallback: manually calculate residuals if not found
+    # Note: fracdiff doesn't always store 'fitted' easily, so we rely on what's there
+    cat("Warning: Residuals not found in model object. Skipping.\n")
+    return()
+  }
+  
+  # CRITICAL FIX: Remove NAs (often present at the start of series)
+  resids <- na.omit(resids)
+  
+  # Check if we have data left to plot
+  if (length(resids) == 0) {
+    cat("Error: Residuals vector is empty after removing NAs.\n")
+    return()
+  }
+
+  # 2. Visual Inspection
+  par(mfrow=c(2,1))
+  # Use tryCatch to prevent plot errors from stopping the code
+  tryCatch({
+    plot(resids, main = paste("Residuals of", name), ylab="Residuals", type="l", col="blue")
+    abline(h=0, col="red")
+    acf(resids, main = paste("ACF of Residuals -", name))
+  }, error = function(e) { cat("Plotting Error:", e$message, "\n") })
+  par(mfrow=c(1,1)) 
+  
+  # 3. Ljung-Box Test (Serial Correlation)
+  # H0: Residuals are White Noise (Good)
+  # H1: Residuals are Correlated (Bad)
+  lb <- Box.test(resids, type = "Ljung-Box", lag = 10)
+  cat("\nLjung-Box Test (p-value):", format.pval(lb$p.value, digits=4), "\n")
+  if(lb$p.value > 0.05) cat("-> Result: Residuals appear to be White Noise (Model is adequate).\n")
+  else cat("-> Result: Residuals significant autocorrelation (Model may need improvement).\n")
+  
+  # 4. Normality Test
+  # H0: Normal Distribution
+  jb <- jarque.bera.test(resids)
+  cat("\nJarque-Bera Test (p-value):", format.pval(jb$p.value, digits=4), "\n")
+  
+  # 5. ARCH Test (Heteroskedasticity)
+  # H0: No ARCH effects (Constant Variance)
+  tryCatch({
+    at <- ArchTest(resids, lags = 5)
+    cat("\nARCH LM Test (p-value):", format.pval(at$p.value, digits=4), "\n")
+  }, error = function(e) {
+    # Fallback if ArchTest fails
+    bt_sq <- Box.test(resids^2, type="Ljung-Box", lag=10)
+    cat("\nARCH Check (Squared Resids Ljung-Box p-value):", format.pval(bt_sq$p.value, digits=4), "\n")
+  })
+}
+
+# --- C. Execution ---
+
+# 1. Airline
+cat("\n--- Re-fitting Airline Model ---\n")
+raw_traffic <- get_clean_series("C:/Users/Administrator/Downloads/air traffic (1).xlsx", "Series_originales", "LSN_PAX")
+ts_traffic <- ts(log(raw_traffic), frequency = 4)
+fit_air <- fracdiff(ts_traffic, nar = 1, nma = 1)
+run_diagnostics(ts_traffic, fit_air, "Airline Passengers")
+
+# 2. ENSO
+cat("\n--- Re-fitting ENSO Model ---\n")
+raw_enso <- get_clean_series("C:/Users/Administrator/Downloads/training_enso.xlsx", "Sheet 1", "ONI")
+ts_enso <- ts(raw_enso, frequency = 12)
+fit_enso <- fracdiff(ts_enso, nar = 1, nma = 1)
+run_diagnostics(ts_enso, fit_enso, "ENSO Index")
+```
+
+### Interpretation of Model Diagnostics
+
+#### 1. Airline Passengers (Log-Transformed)
+* **Serial Correlation (Ljung-Box Test):**
+    * **Result:** The test yielded a p-value of **0.0012**, which is well below the significance level of 0.05.
+    * **Conclusion:** We **reject** the null hypothesis of independence. The residuals still exhibit significant serial correlation. This suggests that the standard ARFIMA model (even with log-transformation) is not fully adequate, likely because it fails to capture the strong deterministic seasonality of the data.
+* **Normality (Jarque-Bera Test):**
+    * **Result:** The p-value is extremely small (< 2.2e-16), indicating that the residuals are **not** normally distributed.
+* **Heteroskedasticity (ARCH LM Test):**
+    * **Result:** The p-value is **0.9791** (> 0.05).
+    * **Conclusion:** We **do not reject** the null hypothesis. The residuals appear to be homoskedastic (constant variance). This indicates that the **log-transformation** was successful in stabilizing the variance, even though the model missed the seasonal dynamics.
+* **Overall Assessment:** The model is **inadequate**. While the variance is stable, the significant autocorrelation implies that a more complex model (such as SARFIMA to handle seasonality) is required.
+
+#### 2. ENSO Anomalies Index (ONI)
+* **Serial Correlation (Ljung-Box Test):**
+    * **Result:** The p-value is virtually zero (< 2.2e-16).
+    * **Conclusion:** We **strongly reject** the null hypothesis. The residuals are highly correlated and do **not** behave as White Noise. The model failed to capture the complex temporal dependence of the ENSO cycle.
+* **Normality (Jarque-Bera Test):**
+    * **Result:** The p-value is < 2.2e-16, confirming non-normality.
+* **Heteroskedasticity (ARCH LM Test):**
+    * **Result:** The p-value is < 2.2e-16.
+    * **Conclusion:** We **reject** the null hypothesis. There is strong evidence of **ARCH effects** (volatility clustering). This confirms that the volatility of the ENSO index changes over time—periods of high volatility followed by calm periods—which the standard homoskedastic ARFIMA model cannot handle.
+* **Overall Assessment:** The model is **poorly specified**. The combination of serial correlation and strong heteroskedasticity suggests that a model capable of handling changing variance (like **ARFIMA-GARCH**) is necessary for this data.
+
+
+## C – Comparative Analysis
+
+```{r}
+# --- Part C: Comparative Analysis (Airline Series) ---
+library(fracdiff)
+library(forecast)
+library(readxl)
+
+# --- 1. Load Data (Levels) ---
+# We use the clean data function from before
+get_clean_series <- function(filepath, sheetname, colname) {
+  df <- read_excel(filepath, sheet = sheetname)
+  vals <- as.numeric(as.character(df[[colname]]))
+  return(vals[!is.na(vals)])
+}
+
+raw_traffic <- get_clean_series("C:/Users/Administrator/Downloads/air traffic (1).xlsx", "Series_originales", "LSN_PAX")
+
+# A. Series in Levels (Log-transformed to stabilize variance)
+# Note: We use Log-Levels as the "Levels" baseline because the raw data is heteroskedastic.
+ts_levels <- ts(log(raw_traffic), frequency = 4)
+
+# B. Series in Growth Rates (Log-Differences)
+# This is equivalent to approx. percentage change
+ts_growth <- diff(ts_levels)
+
+# --- 2. Estimate ARFIMA Models ---
+
+cat("\n=========================================\n")
+cat("1. ESTIMATION ON LEVELS (Log(X))\n")
+cat("=========================================\n")
+fit_levels <- fracdiff(ts_levels, nar = 1, nma = 1)
+cat("Estimated d (Levels):", fit_levels$d, "\n")
+cat("AR Coefficients:", fit_levels$ar, "\n")
+cat("MA Coefficients:", fit_levels$ma, "\n")
+
+cat("\n=========================================\n")
+cat("2. ESTIMATION ON GROWTH RATES (Diff(Log(X)))\n")
+cat("=========================================\n")
+fit_growth <- fracdiff(ts_growth, nar = 1, nma = 1)
+cat("Estimated d (Growth Rates):", fit_growth$d, "\n")
+cat("AR Coefficients:", fit_growth$ar, "\n")
+cat("MA Coefficients:", fit_growth$ma, "\n")
+```
+
+#### 1. Estimation Results
+* **Model in Levels (Log(X)):**
+    * Estimated fractional differencing parameter: $\hat{d}_{level} \approx 0.048$.
+    * AR Coefficient: $0.85$.
+* **Model in Growth Rates (Diff(Log(X))):**
+    * Estimated fractional differencing parameter: $\hat{d}_{diff} \approx 4.58 \times 10^{-5}$ (approx. 0).
+    * AR Coefficient: $0.14$.
+
+#### 2. Comparison & Effect of Differencing
+* **Impact on $d$:** Differencing the series reduced the fractional parameter from a small positive value ($\approx 0.05$) to effectively zero.
+* **Impact on Persistence:** Notice the dramatic drop in the **AR coefficient** from $0.85$ (in levels) to $0.14$ (in growth rates).
+    * **In Levels:** The model captured the trend and persistence primarily through the high AR term ($0.85$) and a small fractional component.
+    * **In Growth Rates:** Differencing successfully removed the trend and the strong autocorrelation. The resulting series shows almost no memory ($d \approx 0$ and low AR), behaving like a standard short-memory process.
+
+#### 3. Trade-off and Conclusion
+* **Which specification is appropriate?**
+    * Since $\hat{d}_{level} \approx 0.05$ is well below $0.5$, the series in **levels** is technically stationary (after accounting for the AR trend). This suggests we *can* model the series in levels without violating stationarity assumptions.
+    * However, the **Growth Rates** specification yields a cleaner, standard I(0) process ($d \approx 0$).
+* **The Trade-off:**
+    * **Modeling Levels:** The advantage is that we retain information about the long-run level of the series. The risk is usually non-stationarity, but our estimate ($d < 0.5$) suggests this is safe here.
+    * **Modeling Growth Rates:** The advantage is robustness; we ensure the removal of stochastic trends. The disadvantage is potential "over-differencing" (losing long-run info), though in this specific case, the result ($d \approx 0$) shows no signs of over-differencing (which would have yielded a negative $d$).
+* **Final Verdict:** The analysis suggests that the airline series does **not** exhibit true Long Memory behavior. The persistence is best explained by standard autoregressive dynamics (AR) and seasonality, which are effectively removed by differencing.
