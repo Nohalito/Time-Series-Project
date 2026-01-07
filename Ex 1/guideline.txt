@@ -1,0 +1,15 @@
+guideline
+Exercise 1: Extreme distributions
+• Download the Excel file CAPM on AMETICE
+• Consider the following indexes : Microsoft
+NB: USTB3M is the yield of the risk-free asset (3-month US government Bond Yield) and
+S&P500 is the market index.
+• Do a preliminary analysis of the excess returns (your asset + market excess returns) based
+on basics statistics, graphs of the distributions, QQ-plots, box-plot, bivariate scatterplot,
+graphs of time series, autocorrelation function, pp-plot
+• Fit one of the following extreme distribution to the excess returns (your asset + market
+excess returns): Weibull, log-normal, Gamma.
+• Fit a GEV distribution to the excess return series and plot the QQ-plot, density and CDF.
+• Using elliptical copulas, estimate the correlation between the excess returns of your asset
+asset and the market excess returns.
+• Fit Archimedian copulas (Clayton or Weibull).

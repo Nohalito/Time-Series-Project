@@ -17,18 +17,20 @@ lapply(packages, require, character.only = TRUE)
 ```{r data, include = FALSE}
 data = read_excel('../datasets/capm.xls', skip = 1)
 
-head(data)
-```
-```{r}
 # Construct excess returns 
 asset <- "MICROSOFT"
 
 # Excess returns
-asset_excess  <- data[[asset]] - data$USTB3M
-market_excess <- data$SANDP - data$USTB3M
+asset_excess  <- cbind(data[[asset]] - data$USTB3M)
+market_excess <- cbind(data$SANDP - data$USTB3M)
+
+asset_excess <- log(asset_excess)
+market_excess <- log(market_excess)
 
 # Remove NA
 df <- na.omit(data.frame(asset_excess, market_excess))
+
+head(data)
 ```
 
 ```{r}
@@ -36,7 +38,6 @@ df <- na.omit(data.frame(asset_excess, market_excess))
 summary(df)
 
 # Moments
-library(moments)
 apply(df, 2, skewness)
 apply(df, 2, kurtosis)
 ```
@@ -46,18 +47,35 @@ apply(df, 2, kurtosis)
 
 ```{r}
 # Distribution plot (asset excess)
-ggplot(df, aes(x = asset_excess)) +
+# Load the necessary library
+library(ggplot2)
+library(gridExtra)
+
+# First plot (asset excess)
+plot1 <- ggplot(df, aes(x = asset_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "blue") +
   ggtitle("Histogram and Density – Asset Excess Returns")
+
+# Second plot (market excess)
+plot2 <- ggplot(df, aes(x = market_excess)) +
+  geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
+  geom_density(color = "red") +
+  ggtitle("Histogram and Density – Market Excess Returns")
+
+# Arrange both plots side-by-side
+grid.arrange(plot1, plot2, ncol = 2,widths = c(1, 1))
 ```
 
 ### 2.2°/ QQ-plot :
 
 ```{r}
 # Touche moi le QQ-plot
-qqnorm(df$asset_excess) +
+plot1 = qqnorm(df$asset_excess) +
   qqline(df$asset_excess, col = "red")
+
+plot2 = qqnorm(df$market_excess) +
+  qqline(df$market_excess, col = "red")
 ```
 
 ### 2.3°/ Box-plot :

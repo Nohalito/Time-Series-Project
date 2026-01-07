@@ -1,6 +1,6 @@
 Exercise 4 : Extreme distributions :
 
-Now, we wish to model the correlation between the spreads of countries i and j using copulas.
+Now, we wish to model the correlation between the spreads of countries Autstria and Spain using copulas.
 • Do a preliminary analysis of the spreads based on basics statistics, graphs of the
 distributions, QQ-plots, box-plot, bivariate scatterplot, graphs of time series,
 autocorrelation function, pp-plot
