@@ -17,18 +17,18 @@ lapply(packages, require, character.only = TRUE)
 ```{r data, include = FALSE}
 data = read_excel('../datasets/capm.xls', skip = 1)
 
+data$Date <- as.Date(data$Date, origin = "1899-12-30")
+
 # Construct excess returns 
 asset <- "MICROSOFT"
 
 # Excess returns
-asset_excess  <- cbind(data[[asset]] - data$USTB3M)
-market_excess <- cbind(data$SANDP - data$USTB3M)
-
-asset_excess <- log(asset_excess)
-market_excess <- log(market_excess)
+date <- data$Date
+asset_excess  <- log(cbind(data[[asset]] - data$USTB3M))
+market_excess <- log(cbind(data$SANDP - data$USTB3M))
 
 # Remove NA
-df <- na.omit(data.frame(asset_excess, market_excess))
+df <- na.omit(data.frame(date, asset_excess, market_excess))
 
 head(data)
 ```
@@ -38,8 +38,8 @@ head(data)
 summary(df)
 
 # Moments
-apply(df, 2, skewness)
-apply(df, 2, kurtosis)
+apply(df[2:3], 2, skewness)
+apply(df[2:3], 2, kurtosis)
 ```
 
 ## 2°/ EDA :
@@ -52,13 +52,13 @@ library(ggplot2)
 library(gridExtra)
 
 # First plot (asset excess)
-plot1 <- ggplot(df, aes(x = asset_excess)) +
+plot1 <- ggplot(df, aes(x = df$asset_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "blue") +
   ggtitle("Histogram and Density – Asset Excess Returns")
 
 # Second plot (market excess)
-plot2 <- ggplot(df, aes(x = market_excess)) +
+plot2 <- ggplot(df, aes(x = df$market_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "red") +
   ggtitle("Histogram and Density – Market Excess Returns")
@@ -87,7 +87,7 @@ boxplot(df$asset_excess, main = "Boxplot – Asset Excess Returns")
 ### 2.4°/ Time series plot :
 
 ```{r}
-plot(df$asset_excess, type = "l",
+plot(df$date, df$asset_excess, type = "l",
      main = "Time Series of Asset Excess Returns",
      ylab = "Returns", xlab = "Time")
 ```
@@ -124,13 +124,21 @@ plot(df$market_excess, df$asset_excess,
 ## 3°/ Fit an extreme distribution :
 
 ```{r}
+library(data.table)
+
 # Whatever the distribution, we need positive data => ofc I (don't) listen in class so I missed that part.
+df$mo <- strftime(df$date,"%m")
+df$yr <- strftime(df$date,"%Y")
+
+indexbis <- df
+
+maxima <- setDT(df)[, .(asset_up = max(df$asset_excess)), by = .(yr, mo)]
 
 x <- df$asset_excess # Should I put '-' before it ?
 x <- x[x > 0]  # focus on losses
 
 # We ballin' on Redbull distribution :
-fit_weibull <- fitdist(x, "weibull")
+fit_weibull <- fitdist(df$asset_excess, "weibull")
 summary(fit_weibull)
 plot(fit_weibull)
 ```
@@ -146,6 +154,11 @@ plot(fit_weibull)
 
 # Fuck it, we rollin' on evd library instead
 library(evd)
+
+fit_gev_asset<-fevd(as.vector(df$asset_excess), method = "MLE", type="GEV")
+plot(fit_gev_asset)
+summary(fit_gev_asset, silent=FALSE) #to get the standard error of estimates
+
 
 gev_fit <- fgev(df$asset_excess)
 summary(gev_fit)

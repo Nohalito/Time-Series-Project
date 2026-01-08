@@ -80,8 +80,8 @@ library(lubridate)
 
 # --- 1. Load the Data ---
 # We read the specific sheets corresponding to the data
-traffic_data <- read_excel("C:/Users/Administrator/Downloads/air traffic (1).xlsx", sheet = "Series_originales")
-enso_data <- read_excel("C:/Users/Administrator/Downloads/training_enso.xlsx", sheet = "Sheet 1")
+traffic_data <- read_excel("../datasets/air traffic.xlsx", sheet = "Series_originales")
+enso_data <- read_excel("../datasets/training_enso.xlsx", sheet = "Sheet 1")
 
 # --- 2. Preprocessing & Time Series Creation ---
 

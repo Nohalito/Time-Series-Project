@@ -33,7 +33,7 @@ library(dplyr)
 # ----------------------------------
 # We read the file (assuming it's in the project folder)
 # Note: 'skip=1' skips the first row of headers to get the correct column names
-df_raw <- read_excel("C:/Users/Administrator/Downloads/capm.xls", skip = 1)
+df_raw <- read_excel("../datasets/capm.xls", skip = 1)
 
 # Convert Excel serial date to Date object
 df_raw$Date <- as.Date(df_raw$Date, origin = "1899-12-30")
