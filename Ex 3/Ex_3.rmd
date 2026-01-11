@@ -8,27 +8,42 @@ output: html_document
 ```{r setup, include = FALSE, echo = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-packages <- c("readxl", "dplyr","tidyverse", "dynlm", "FinTS","lmtest", "tseries", "nonlinearTseries", "MSwM", "tsDyn", "rugarch", "rmgarch")
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(readxl, dplyr, tidyverse, dynlm, xts, FinTS, lmtest, tseries, nonlinearTseries, MSwM, tsDyn ,rugarch, rmgarch)
+packages <- c("readxl", "dplyr","tidyverse", "dynlm", "xts", "FinTS", "lmtest", "tseries", "nonlinearTseries", "MSwM", "tsDyn", "rugarch", "rmgarch")
 lapply(packages, require, character.only = TRUE)
 
-bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
+data = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
 
 # Inspect column names
-colnames(bonds)
+colnames(data)
 ```
 
 ```{r}
 # Construct yield spreads vs Germany
-bonds <- bonds %>%
+data <- data %>%
   mutate(
-    AUT_spread = bonds$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
-    SPA_spread = bonds$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - bonds$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
+    AUT_spread = data$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
+    SPA_spread = data$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
   ) %>%
   drop_na()
 
 # Convert to time series
-AUT_spread <- ts(bonds$AUT_spread, frequency = 12)
-SPA_spread <- ts(bonds$SPA_spread, frequency = 12)
+AUT_spread<-xts(data$AUT_spread, order.by = data$Date...7 )
+SPA_spread<-xts(data$SPA_spread, order.by = data$Date...39 )
+
+RAUT_spread = diff(log(AUT_spread), lag = 1, differences = 1)
+RSPA_spread = diff(log(SPA_spread), lag = 1, differences = 1)
+
+#AUT_spread <- ts(data$AUT_spread, frequency = 12)
+#SPA_spread <- ts(data$SPA_spread, frequency = 12)
+
+df = cbind(AUT_spread, SPA_spread)
+log_df = cbind(RAUT_spread, RSPA_spread)
+
+plot(ts(df))
+plot(ts(log_df))
 ```
 
 ## 1°/ Markov-Switching Model :
@@ -39,6 +54,11 @@ SPA_spread <- ts(bonds$SPA_spread, frequency = 12)
 lin_mod <- lm(AUT_spread ~ stats::lag(SPA_spread, 1))
 summary(lin_mod)
 
+par(mfrow=c(2,2))
+plot(lin_mod)
+```
+
+```{r}
 # Autocorrelation
 bgtest(lin_mod, order = 4)
 
@@ -55,18 +75,18 @@ jarque.bera.test(residuals(lin_mod))
 AICs <- c()
 
 for (p in 1:4) {
-  mod <- lm(AUT_spread ~ stats::lag(SPA_spread, -p))
+  mod <- lm(RAUT_spread ~ stats::lag(RSPA_spread, -p))
   AICs[p] <- AIC(mod)
 }
 
 which.min(AICs)
 
-bonds$lagged_SPA_spread <- stats::lag(bonds$SPA_spread, 1)
+data$lagged_SPA_spread <- stats::lag(data$RSPA_spread, 1)
 
-bonds2 <- na.omit(bonds)
+data <- na.omit(data)
 
 ms_mod <- msmFit(
-  lm(AUT_spread ~ lagged_SPA_spread, data = bonds2),
+  lm(RAUT_spread ~ lagged_SPA_spread, data = data),
   k = 2,
   control = list(parallel = FALSE),
   sw = c(TRUE, TRUE, TRUE)  # intercept, slope, variance switch
@@ -77,6 +97,8 @@ summary(ms_mod)
 
 ### 1.3°/ Posterior regim probabilities :
 ```{r}
+par(mfrow = c(1, 2))
+
 plot(ms_mod@Fit@smoProb[,1],
      type = "l", col = "blue",
      main = "Smoothed Probability – Regime 1",
@@ -92,46 +114,21 @@ plot(ms_mod@Fit@smoProb[,2],
 ### 2.1°/ Linearity test :
 
 ```{r}
-lin_model <- lm(AUT_spread ~ stats::lag(AUT_spread, 1))
-
-plot(resid(lin_model))
-
-residuals <- resid(lin_model)
-
-nonlinearityTest(residuals,verbose=TRUE)
+par(mfrow = c(2,2))
+plot(lin_mod)
 ```
 
 ### 2.2 LSTAR model :
 
 ```{r}
-lstar_mod <- lstar(
-  bonds$AUT_spread,
+lstar_mod <- tsDyn::lstar(
+  AUT_spread,
   m = 1,
   d = 1,
   control = list(trace = TRUE)
 )
 
 summary(lstar_mod)
-```
-
-```{r}
-pdf_file <- "lstar_transition.pdf"
-
-if (file.exists(pdf_file)) {
-  # Open the existing PDF
-  if (.Platform$OS.type == "windows") {
-    shell.exec(pdf_file)
-  } else if (Sys.info()["sysname"] == "Darwin") {
-    system(paste("open", pdf_file))
-  } else {
-    system(paste("xdg-open", pdf_file))
-  }
-} else {
-  # Create the PDF
-  pdf(pdf_file)
-  plot(lstar_mod, which = "transition")
-  dev.off()
-}
 ```
 
 ## 3°/ Bivariate GARCH :
@@ -154,9 +151,9 @@ spec_dcc <- dccspec(
   distribution = "mvnorm"
 )
 
-data_mat <- cbind(AUT_spread, SPA_spread)
+#data_mat <- cbind(AUT_spread, SPA_spread)
 
-dcc_fit <- dccfit(spec_dcc, data = data_mat)
+dcc_fit <- dccfit(spec_dcc, data = df)
 summary(dcc_fit)
 ```
 

@@ -8,6 +8,10 @@ output: html_document
 ```{r setup, include = FALSE, echo = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(readxl,tidyverse, moments, fitdistrplus, copula,evd, VineCopula, tseries)
+
 packages <- c("readxl","tidyverse", "moments", "fitdistrplus", "copula","evd", "VineCopula", "tseries")
 lapply(packages, require, character.only = TRUE)
 
@@ -15,14 +19,6 @@ bonds = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
 
 # Inspect column names
 colnames(bonds)
-
-#install.packages("gsl", type = "source")
-#library(gsl)
-#library(copula)
-#R.version.string
-#library(installr)
-#installr(GUI = TRUE)
-#install.packages("gsl", type = "source")
 ```
 
 ```{r}

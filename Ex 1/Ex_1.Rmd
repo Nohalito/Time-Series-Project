@@ -2,13 +2,17 @@
 title: "Ex 1 :"
 author: "Nohalito"
 date: "2025-11-27"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include = FALSE, echo = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-packages <- c("readxl", "moments", "ggplot2", "fitdistrplus", "evd", "extRemes",
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(readxl, moments, ggplot2, patchwork,fitdistrplus, evd, extRemes, copula, PerformanceAnalytics, tseries)
+
+packages <- c("readxl", "moments", "ggplot2", "patchwork", "fitdistrplus", "evd", "extRemes",
               "copula", "PerformanceAnalytics", "tseries")
 lapply(packages, require, character.only = TRUE)
 ```
@@ -17,18 +21,19 @@ lapply(packages, require, character.only = TRUE)
 ```{r data, include = FALSE}
 data = read_excel('../datasets/capm.xls', skip = 1)
 
-data$Date <- as.Date(data$Date, origin = "1899-12-30")
-
 # Construct excess returns 
 asset <- "MICROSOFT"
 
 # Excess returns
-date <- data$Date
-asset_excess  <- log(cbind(data[[asset]] - data$USTB3M))
-market_excess <- log(cbind(data$SANDP - data$USTB3M))
+asset_returns = diff(log(cbind(data[[asset]])), lag = 1)
+market_returns = diff(log(cbind(data$SANDP)), lag = 1)
+risk_free_returns = diff(log(cbind(data$USTB3M)), lag = 1)
+
+asset_excess = asset_returns - risk_free_returns
+market_excess = market_returns - risk_free_returns
 
 # Remove NA
-df <- na.omit(data.frame(date, asset_excess, market_excess))
+df <- na.omit(data.frame(asset_excess, market_excess))
 
 head(data)
 ```
@@ -38,78 +43,83 @@ head(data)
 summary(df)
 
 # Moments
-apply(df[2:3], 2, skewness)
-apply(df[2:3], 2, kurtosis)
+apply(df, 2, skewness)
+apply(df, 2, kurtosis)
 ```
 
 ## 2°/ EDA :
-### 2.1°/ Distribution plot (asset excess):
+### 2.1°/ Distribution plot :
 
 ```{r}
-# Distribution plot (asset excess)
-# Load the necessary library
-library(ggplot2)
-library(gridExtra)
-
-# First plot (asset excess)
-plot1 <- ggplot(df, aes(x = df$asset_excess)) +
+p1 <- ggplot(df, aes(x = asset_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "blue") +
-  ggtitle("Histogram and Density – Asset Excess Returns")
+  ggtitle("Asset Excess Returns")
 
-# Second plot (market excess)
-plot2 <- ggplot(df, aes(x = df$market_excess)) +
+p2 <- ggplot(df, aes(x = market_excess)) +
   geom_histogram(aes(y = ..density..), bins = 40, fill = "grey") +
   geom_density(color = "red") +
-  ggtitle("Histogram and Density – Market Excess Returns")
+  ggtitle("Market Excess Returns")
 
-# Arrange both plots side-by-side
-grid.arrange(plot1, plot2, ncol = 2,widths = c(1, 1))
+(p1 | p2) +
+  plot_annotation(
+    title = "Distribution & Histograms of : "
+  ) &
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
 ```
 
 ### 2.2°/ QQ-plot :
 
 ```{r}
 # Touche moi le QQ-plot
-plot1 = qqnorm(df$asset_excess) +
+par(mfrow = c(1, 2))
+
+qqnorm(df$asset_excess) +
   qqline(df$asset_excess, col = "red")
 
-plot2 = qqnorm(df$market_excess) +
+qqnorm(df$market_excess) +
   qqline(df$market_excess, col = "red")
 ```
 
 ### 2.3°/ Box-plot :
 
 ```{r}
+par(mfrow = c(1, 2))
+
 boxplot(df$asset_excess, main = "Boxplot – Asset Excess Returns")
+boxplot(df$market_excess, main = "Boxplot – Market Excess Returns")
 ```
 
 ### 2.4°/ Time series plot :
 
 ```{r}
-plot(df$date, df$asset_excess, type = "l",
-     main = "Time Series of Asset Excess Returns",
-     ylab = "Returns", xlab = "Time")
+plot(ts(df), main = "Time Series of Asset & Market excess returns" )
 ```
 
 ### 2.5°/ ACF :
 
 ```{r}
+par(mfrow = c(1, 2))
 acf(df$asset_excess, main = "ACF – Asset Excess Returns")
+acf(df$market_excess, main = "ACF – Market Excess Returns")
 ```
 
 ### 2.6°/ PP-plot :
 
 ```{r}
-ppplot <- function(x) {
+ppplot <- function(x, string) {
   n <- length(x)
   y <- sort(x)
   p <- pnorm(y, mean(x), sd(x))
-  plot((1:n)/(n+1), p, main="PP-Plot")
+  plot((1:n)/(n+1), p, main=string)
   abline(0,1,col="red")
 }
 
-ppplot(df$asset_excess)
+par(mfrow = c(1, 2))
+ppplot(df$asset_excess, "Asset pp-plot")
+ppplot(df$market_excess, "Market pp-plot")
 ```
 
 ### 2.7°/ Bivariate scatterplot :
@@ -124,21 +134,12 @@ plot(df$market_excess, df$asset_excess,
 ## 3°/ Fit an extreme distribution :
 
 ```{r}
-library(data.table)
-
 # Whatever the distribution, we need positive data => ofc I (don't) listen in class so I missed that part.
-df$mo <- strftime(df$date,"%m")
-df$yr <- strftime(df$date,"%Y")
-
-indexbis <- df
-
-maxima <- setDT(df)[, .(asset_up = max(df$asset_excess)), by = .(yr, mo)]
-
 x <- df$asset_excess # Should I put '-' before it ?
 x <- x[x > 0]  # focus on losses
 
 # We ballin' on Redbull distribution :
-fit_weibull <- fitdist(df$asset_excess, "weibull")
+fit_weibull <- fitdist(x, "weibull")
 summary(fit_weibull)
 plot(fit_weibull)
 ```
@@ -146,23 +147,9 @@ plot(fit_weibull)
 ## 4°/ Fit the GEV distribution :
 
 ```{r}
-#install.packages("fExtremes")
-#library('fExtremes')
-#?fgev
-#gev_fit <- fgev(df$asset_excess)
-#summary(gev_fit)
-
 # Fuck it, we rollin' on evd library instead
-library(evd)
-
-fit_gev_asset<-fevd(as.vector(df$asset_excess), method = "MLE", type="GEV")
-plot(fit_gev_asset)
-summary(fit_gev_asset, silent=FALSE) #to get the standard error of estimates
-
-
 gev_fit <- fgev(df$asset_excess)
 summary(gev_fit)
-
 ```
 
 ### 4.1°/ GEV QQ-plot :
@@ -197,16 +184,8 @@ u_market <- rank(df$market_excess)/(nrow(df)+1)
 
 U <- cbind(u_asset, u_market)
 ```
-```{r}
-#install.packages("copula")
-#install.packages("gsl")
-#library(gsl)
-#library(copula)
-#installed.packages()
-#search()
-#install.packages("VineCopula")
-#library(VineCopula)
 
+```{r}
 gauss_cop <- normalCopula(dim = 2)
 fit_gauss <- fitCopula(gauss_cop, U, method = "ml")
 summary(fit_gauss)
