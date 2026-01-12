@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 if (!require("pacman")) install.packages("pacman")
 
-pacman::p_load(readxl, moments, ggplot2, patchwork,fitdistrplus, evd, extRemes, copula, PerformanceAnalytics, tseries)
+pacman::p_load(readxl, moments, ggplot2, patchwork, fitdistrplus, evd, extRemes, copula, PerformanceAnalytics, tseries)
 
 packages <- c("readxl", "moments", "ggplot2", "patchwork", "fitdistrplus", "evd", "extRemes",
               "copula", "PerformanceAnalytics", "tseries")
@@ -168,13 +168,13 @@ qqplot(theoretical_quantiles, df$asset_excess)
 ### 4.2°/ GEV Density :
 
 ```{r}
-plot(gev_fit)
+plot(gev_fit, 3)
 ```
 
 ### 4.3°/ GEV Probability
 
 ```{r}
-plot(gev_fit)
+plot(gev_fit, 1)
 ```
 
 ## 5 : Elliptical copulas :

@@ -2,7 +2,7 @@
 title: "Ex 3 :"
 author: "Noha"
 date: "2025-11-27"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include = FALSE, echo = FALSE}
@@ -10,11 +10,22 @@ knitr::opts_chunk$set(echo = TRUE)
 
 if (!require("pacman")) install.packages("pacman")
 
-pacman::p_load(readxl, dplyr, tidyverse, dynlm, xts, FinTS, lmtest, tseries, nonlinearTseries, MSwM, tsDyn ,rugarch, rmgarch)
-packages <- c("readxl", "dplyr","tidyverse", "dynlm", "xts", "FinTS", "lmtest", "tseries", "nonlinearTseries", "MSwM", "tsDyn", "rugarch", "rmgarch")
+pacman::p_load(readxl, dplyr, tidyverse, dynlm, xts, FinTS, ggplot2,lmtest, tseries, nonlinearTseries, MSwM, tsDyn ,rugarch, rmgarch)
+packages <- c("readxl", "dplyr","tidyverse", "dynlm", "xts", "FinTS", "ggplot2", "lmtest", "tseries", "nonlinearTseries", "MSwM", "tsDyn", "rugarch", "rmgarch")
 lapply(packages, require, character.only = TRUE)
 
 data = read_excel("../datasets/base_bond_equity.xls", sheet = "Bonds")
+
+cols_to_keep <- c(
+  "Austria, Government Benchmarks, Macrobond, 10 Year, Yield",
+  "Germany, Government Benchmarks, Macrobond, 10 Year, Yield",
+  "Spain, Government Benchmarks, Macrobond, 10 Year, Yield",
+  "Date...7",
+  "Date...15",
+  "Date...39"
+)
+
+data <- data[, cols_to_keep]
 
 # Inspect column names
 colnames(data)
@@ -22,28 +33,46 @@ colnames(data)
 
 ```{r}
 # Construct yield spreads vs Germany
+#data <- data %>%
+#  mutate(
+#    AUT_spread = data$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
+#    SPA_spread = data$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
+#  ) %>%
+#  drop_na()
+
+# Convert to time series
+#AUT_spread<-xts(data$AUT_spread, order.by = data$Date...7 )
+#SPA_spread<-xts(data$SPA_spread, order.by = data$Date...39 )
+
+#AUT_spread <- ts(AUT_spread)
+#SPA_spread <- ts(SPA_spread)
+
+#RAUT_spread = diff(log(AUT_spread), lag = 1)
+#RSPA_spread = diff(log(SPA_spread), lag = 1)
+
+#df = cbind(AUT_spread, SPA_spread)
+#log_df = cbind(RAUT_spread, RSPA_spread)
+
+# Construct yield spreads vs Germany
 data <- data %>%
-  mutate(
-    AUT_spread = data$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`,
-    SPA_spread = data$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield` - data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`
-  ) %>%
   drop_na()
 
 # Convert to time series
-AUT_spread<-xts(data$AUT_spread, order.by = data$Date...7 )
-SPA_spread<-xts(data$SPA_spread, order.by = data$Date...39 )
+GER <- xts(data$`Germany, Government Benchmarks, Macrobond, 10 Year, Yield`, order.by = data$Date...15)
+AUT <- xts(data$`Austria, Government Benchmarks, Macrobond, 10 Year, Yield`, order.by = data$Date...7)
+SPA <- xts(data$`Spain, Government Benchmarks, Macrobond, 10 Year, Yield`, order.by = data$Date...39 )
 
-RAUT_spread = diff(log(AUT_spread), lag = 1, differences = 1)
-RSPA_spread = diff(log(SPA_spread), lag = 1, differences = 1)
+AUT_spread <- ts(AUT - GER)
+SPA_spread <- ts(SPA - GER)
 
-#AUT_spread <- ts(data$AUT_spread, frequency = 12)
-#SPA_spread <- ts(data$SPA_spread, frequency = 12)
+RAUT_spread = diff(AUT_spread, lag = 1)
+RSPA_spread = diff(SPA_spread, lag = 1)
 
 df = cbind(AUT_spread, SPA_spread)
-log_df = cbind(RAUT_spread, RSPA_spread)
+return_df = cbind(RAUT_spread, RSPA_spread)
 
 plot(ts(df))
-plot(ts(log_df))
+plot(ts(return_df))
 ```
 
 ## 1°/ Markov-Switching Model :
@@ -75,18 +104,19 @@ jarque.bera.test(residuals(lin_mod))
 AICs <- c()
 
 for (p in 1:4) {
-  mod <- lm(RAUT_spread ~ stats::lag(RSPA_spread, -p))
+  mod <- lm(AUT_spread ~ stats::lag(SPA_spread, -p))
   AICs[p] <- AIC(mod)
 }
 
 which.min(AICs)
 
-data$lagged_SPA_spread <- stats::lag(data$RSPA_spread, 1)
+# Manually align the data
+SPA_spread_lag <- SPA_spread[-length(SPA_spread)]  # Dropping the last element
+AUT_spread_aligned <- AUT_spread[-1]  # Dropping the first element
 
-data <- na.omit(data)
-
+# Fit the Markov switching model with the aligned variables
 ms_mod <- msmFit(
-  lm(RAUT_spread ~ lagged_SPA_spread, data = data),
+  lm(AUT_spread_aligned ~ SPA_spread_lag),
   k = 2,
   control = list(parallel = FALSE),
   sw = c(TRUE, TRUE, TRUE)  # intercept, slope, variance switch
@@ -111,14 +141,7 @@ plot(ms_mod@Fit@smoProb[,2],
 ```
 
 ## 2°/ LSTAR Model :
-### 2.1°/ Linearity test :
-
-```{r}
-par(mfrow = c(2,2))
-plot(lin_mod)
-```
-
-### 2.2 LSTAR model :
+### 2.1 LSTAR model :
 
 ```{r}
 lstar_mod <- tsDyn::lstar(
@@ -128,7 +151,65 @@ lstar_mod <- tsDyn::lstar(
   control = list(trace = TRUE)
 )
 
+plot(lstar_mod$residuals)
 summary(lstar_mod)
+```
+
+### 2.2°/ Non-Linearity test (Tsay) :
+
+```{r}
+resid <- lstar_mod$residuals
+nonlinearityTest(resid, verbose = TRUE)
+```
+
+### 2.3°/ Transition function :
+
+```{r}
+library(ggplot2)
+
+# 1. Extract the coefficients Gamma (smoothness) and Threshold (c)
+gamma_val <- coef(lstar_mod)["gamma"]
+th_val    <- coef(lstar_mod)["th"]
+
+# 2. Extract the threshold variable used in the model
+threshold_var <- lstar_mod$model.specific$thVar
+threshold_var_clean <- threshold_var[is.finite(threshold_var)]
+
+# 3. Create a function to calculate the weights based on the LSTAR formula
+calculate_weight <- function(s, gamma, c) {
+  1 / (1 + exp(-gamma * (s - c)))
+}
+
+# 4. Generate a smooth curve for plotting
+s_grid <- seq(
+  min(threshold_var_clean),
+  max(threshold_var_clean),
+  length.out = 200
+)
+#s_grid <- seq(min(threshold_var), max(threshold_var), length.out = 200)
+weights_grid <- calculate_weight(s_grid, gamma_val, th_val)
+
+# 5. Calculate actual weights for your data points
+actual_weights <- calculate_weight(threshold_var, gamma_val, th_val)
+
+# 6. Plot
+plot_data <- data.frame(Threshold_Variable = s_grid, Transition_Weight = weights_grid)
+point_data <- data.frame(Threshold_Variable = threshold_var, Transition_Weight = actual_weights)
+
+ggplot() +
+  # The Sigmoid Curve (Theoretical transition)
+  geom_line(data = plot_data, aes(x = Threshold_Variable, y = Transition_Weight), 
+            color = "blue") +
+  # The Actual Observations (Where your data lies on the curve)
+  geom_point(data = point_data, aes(x = Threshold_Variable, y = Transition_Weight), 
+             alpha = 0.5) +
+  # Vertical line for the threshold value
+  geom_vline(xintercept = th_val, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "LSTAR Transition Function",
+       subtitle = paste("Gamma =", round(gamma_val, 2), "| Threshold =", round(th_val, 4)),
+       y = "Transition Function G(s_t) (0 = Low Regime, 1 = High Regime)",
+       x = "Threshold Variable s_t")
 ```
 
 ## 3°/ Bivariate GARCH :
